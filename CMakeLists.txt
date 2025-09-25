@@ -199,7 +199,7 @@ if (WIN32)
 	set_property(TARGET ${PROJECT_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${VS_WDIR}")
 
 	# set model paths
-	set(VS_CMD_ARGS "-d E:/datasets/point_clouds/CA13_SAN_SIM -m ./ipes_cnn.pt -mrgb ./ipes_cnn_rgb.pt")
+	set(VS_CMD_ARGS "-d ./datasets/point_clouds/CA13_SAN_SIM -m ./ipes_cnn.pt -mrgb ./ipes_cnn_rgb.pt")
 	message(STATUS "VS_CMD_ARGS path is ${VS_CMD_ARGS}")
 	set_target_properties(${PROJECT_NAME} PROPERTIES VS_DEBUGGER_COMMAND_ARGUMENTS "${VS_CMD_ARGS}")
 	# set_target_properties(${PROJECT_NAME} PROPERTIES VS_DEBUGGER_COMMAND "debug_command" VS_DEBUGGER_COMMAND_ARGUMENTS "debug_arguments")
