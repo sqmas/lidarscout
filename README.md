@@ -5,7 +5,9 @@ This is the official implementation of LidarScout (High-Performance Graphics 202
 
 This is the repository for the viewer. For the training and evaluation part, see https://github.com/cg-tuwien/lidarscout_training
 
-Want to quickly try it? Here is a stand-alone executable for Windows: https://users.cg.tuwien.ac.at/perler/lidarscout/LidarScout.zip
+Want to quickly try it? Here is a [stand-alone executable for Windows](https://researchdata.tuwien.ac.at/records/443tr-j4096/files/LidarScout_executable_win64.zip?download=1).
+
+Other data is in our long-term storage: https://doi.org/10.48436/443tr-j4096
 
 ![LidarScout teaser](docs/teaser.jpg)
 
