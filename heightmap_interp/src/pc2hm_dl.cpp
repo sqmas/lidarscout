@@ -192,7 +192,7 @@ void pc2hm::HeightmapGeneratorDL::hm2hm_cu_batched(
 
 	if (prediction_tensor.device().is_cpu())
 	{
-		throw std::exception(
+		throw std::runtime_error(
 			"pc2hm::HeightmapGeneratorDL::hm2hm_cu tried to return a CPU memory buffer."
 			"Did you put your model and inputs on the GPU?");
 	}
@@ -257,7 +257,7 @@ void pc2hm::HeightmapGeneratorDL::hm2hm_cu(
 
 	if (prediction_tensor.device().is_cpu())
 	{
-		throw std::exception(
+		throw std::runtime_error(
 			"pc2hm::HeightmapGeneratorDL::hm2hm_cu tried to return a CPU memory buffer."
 			"Did you put your model and inputs on the GPU?");
 	}

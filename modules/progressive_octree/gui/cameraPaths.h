@@ -53,7 +53,7 @@ void makeCameraPaths(shared_ptr<GLRenderer> renderer){
 
 				int len = strlen(buffer);
 				if(len + line.size() + 5 < bufferSize){
-					strcpy_s(buffer + len, bufferSize - len - 1, line.c_str()); 
+					strncpy(buffer + len, line.c_str(), bufferSize - len - 1);
 				}
 
 

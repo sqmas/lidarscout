@@ -147,7 +147,7 @@ struct ChunkPointLoader{
 			for(int i = 0; i < chunks.size(); i++){
 				LazChunk chunk = chunks[i];
 
-				auto success = _fseeki64(pFile, chunk.byteOffset, SEEK_SET);
+				auto success = fseeko(pFile, chunk.byteOffset, SEEK_SET);
 				auto readCount = fread(buffer.data_u8, 1, 36, pFile);
 
 				int X = buffer.get<int32_t>(0);

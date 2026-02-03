@@ -43,7 +43,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 # Dependencies
 # add CPM
-include(cmake/CPM.cmake)
+include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM_0.40.2.cmake)
 
 find_package(CUDAToolkit 12.4 REQUIRED)
 find_package(OpenGL REQUIRED)
@@ -66,6 +66,7 @@ target_link_libraries(${PROJECT_NAME}
 		glfw
 		CUDA::cuda_driver
 		CUDA::nvrtc
+		CUDA::nvJitLink
 		${OPENGL_LIBRARY}
 		ICP
 		hm_interp
