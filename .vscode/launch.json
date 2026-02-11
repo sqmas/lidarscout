@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/IPES",
-            "args": ["-d", "testdata"],
+            "args": ["-d", "testdata/waedenswil"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

@@ -219,12 +219,20 @@ struct ChunkPointLoader{
 
 			shared_ptr<Buffer> buffer_chunkTable = readBinaryFile(file, metadata.chunkTableStart, metadata.chunkTableSize);
 
-			vector<LazChunk> chunks = parseChunkTable(buffer_chunkTable, metadata.offsetToPointData);
+			try
+			{
+				vector<LazChunk> chunks = parseChunkTable(buffer_chunkTable, metadata.offsetToPointData);
 
-			chunkTableInfos[index].numChunkPoints = chunks.size();
-			chunkTableInfos[index].path = file;
+				chunkTableInfos[index].numChunkPoints = chunks.size();
+				chunkTableInfos[index].path = file;
 
-			perTileLazChunks[index] = chunks;
+				perTileLazChunks[index] = chunks;
+			}
+			catch(const int& e)
+			{
+				std::cerr << "Loading file " << file << " failed: " << e << '\n';
+			}
+			
 		});
 
 		double seconds = now() - t_start;
