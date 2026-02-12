@@ -398,7 +398,6 @@ struct PatchHost {
 };
 
 unordered_map<HeightmapCoords, PatchHost> heightmaps;
-deque<HeightmapCoords> heightmapsToGenerate{};
 mutex mtx_heightmaps;
 
 #if defined(PROT_ICP2)
@@ -537,45 +536,6 @@ HeightmapGenerator::PatchSamples getPatchPoints(HeightmapCoords& patchCoords) {
 	}
 
 	return std::move(samples);
-}
-
-struct HeightmapGenerationTask {
-	HeightmapCoords coords;
-	CUdeviceptr heightmapBuffer;
-	CUdeviceptr heightmapTextureBuffer;
-	HeightmapGenerator::PatchSamples samples;
-};
-
-optional<HeightmapGenerationTask> getHeightmapGenerationTask() {
-
-	if(!settings.doUpdateVisibility) return nullopt;
-
-	lock_guard<mutex> lock(mtx_heightmaps);
-
-	while (!heightmapsToGenerate.empty()) {
-		HeightmapCoords coords = heightmapsToGenerate.front();
-		heightmapsToGenerate.pop_front();
-
-		if (!heightmaps[coords].hasHeightmap) {
-
-			Patch& tile = patches[heightmaps[coords].patchIndex];
-
-			return make_optional<HeightmapGenerationTask>(
-					coords,
-					(CUdeviceptr)tile.heightmap,
-					(CUdeviceptr)tile.texture,
-					// (CUdeviceptr)tile.dbgChunkPoints,
-					getPatchPoints(coords));
-		}
-	}
-
-	if(Runtime::t_ChunkpointsLoaded != 0.0 && Runtime::t_heightmapsCreated == 0.0){
-		Runtime::t_heightmapsCreated = now();
-		printElapsedTime("All heightmaps generated. Time since drop: ", Runtime::t_drop);
-		println("numGeneratedHeightmaps: {}", Runtime::numGeneratedHeightmaps);
-	}
-
-	return nullopt;
 }
 
 struct Plane {
@@ -744,123 +704,6 @@ float boundsSizeOnScreen(
 	toScreen(width, height, transform, boundsMin, boundsMax, smin, smax);
 
 	return sizeOnScreen(smin, smax, width, height);
-}
-
-void sortHeightmapGenerationTasks(float width, float height, vec3 cameraPosition) {
-
-
-	lock_guard<mutex> lock(mtx_heightmaps);
-
-	// println("sortHeightmapGenerationTasks, count: {}", heightmapsToGenerate.size());
-
-	mat4 world(1.0f);
-	mat4 view = renderer->camera->view;
-	mat4 proj = renderer->camera->proj;
-	mat4 worldViewProj = proj * view * world;
-    // mat4 transform = worldViewProj;  
-    mat4 transform = transform_updatebound;  
-
-	auto planes = createFrustumPlanes(transform);
-
-	// assign weights depending on visibility
-	for(HeightmapCoords& coord : heightmapsToGenerate){
-		vec2 aMin = {coord.min().x, coord.min().y};
-		vec2 aMax = {coord.max().x, coord.max().y};
-		
-		// float z = (boxMax.z + boxMin.z) / 2.0f;
-		float z = medianTileHeight;
-		vec4 aCenter = vec4{coord.center(), z, 1.0f};
-
-		vec4 ndcACenter = transform * aCenter;
-
-		vec2 screenACenter = vec2{ndcACenter.x, ndcACenter.y} / ndcACenter.w;
-
-		// float sizeA = glm::length(aMax - aMin) / ndcACenter.w;
-		float screenDistA = clamp(1.0f - glm::length(screenACenter), 0.0f, 1.0f);
-		// float w_centerA = 0.5f * screenDistA + 0.5f;
-
-		coord.dbg_weight = screenDistA / ndcACenter.w;
-
-		// float w_a = w_centerA + w_sizeA;
-		// float w_b = w_centerB + w_sizeB;
-
-		// bool intersects_a = dbg::intersectsFrustum(transform, {aMin.x, aMin.y, 0.0f}, {aMin.x, aMin.y, 500.0f});
-		
-		// if(!intersects_a) coord.dbg_weight = 0.0f;
-		if(ndcACenter.w < 0.0f)     coord.dbg_weight = 0.0f;
-		// if(screenACenter.x < -1.0f) coord.dbg_weight = 0.0f;
-		// if(screenACenter.x > 1.0f)  coord.dbg_weight = 0.0f;
-	}
-
-	// sort by weights, descending
-	sort( 
-		heightmapsToGenerate.begin(), heightmapsToGenerate.end(),
-		[&](HeightmapCoords& a, HeightmapCoords& b) {
-
-		return a.dbg_weight > b.dbg_weight;
-	});
-
-	// if(heightmapsToGenerate.size() > 10){
-	// 	stringstream ss;
-	// 	for(int i = 0; i < heightmapsToGenerate.size(); i += 1000){
-	// 		ss << format("{:.3f}, ", heightmapsToGenerate[i].dbg_weight);
-	// 	}
-
-	// 	println("{}", ss.str());
-	// }
-
-	// sort( 
-	// 	heightmapsToGenerate.begin(), heightmapsToGenerate.end(),
-	// 	[&](HeightmapCoords& a, HeightmapCoords& b) {
-	// 		vec2 aMin = {a.min().x, a.min().y};
-	// 		vec2 aMax = {a.max().x, a.max().y};
-	// 		vec2 bMin = {b.min().x, b.min().y};
-	// 		vec2 bMax = {b.max().x, b.max().y};
-			
-	// 		float z = (boxMax.z + boxMin.z) / 2.0f;
-	// 		vec4 aCenter = vec4{a.center(), z, 1.0f};
-	// 		vec4 bCenter = vec4{b.center(), z, 1.0f};
-
-	// 		vec4 ndcACenter = transform_updatebound * aCenter;
-	// 		vec4 ndcBCenter = transform_updatebound * bCenter;
-
-	// 		vec2 screenACenter = vec2{ndcACenter.x, ndcACenter.y} / ndcACenter.w;
-	// 		vec2 screenBCenter = vec2{ndcBCenter.x, ndcBCenter.y} / ndcBCenter.w;
-
-	// 		float sizeA = glm::length(aMax - aMin) / ndcACenter.w;
-	// 		float sizeB = glm::length(bMax - bMin) / ndcBCenter.w;
-
-	// 		float larger = max(sizeA, sizeB);
-	// 		float w_sizeA = sizeA / larger;
-	// 		float w_sizeB = sizeB / larger;
-
-	// 		float screenDistA = clamp(1.0f - glm::length(screenACenter), 0.0f, 1.0f);
-	// 		float screenDistB = clamp(1.0f - glm::length(screenBCenter), 0.0f, 1.0f);
-
-	// 		float w_centerA = 0.5f * screenDistA + 0.5f;
-	// 		float w_centerB = 0.5f * screenDistB + 0.5f;
-
-	// 		float w_a = screenDistA;
-	// 		float w_b = screenDistB;
-
-	// 		// float w_a = w_centerA + w_sizeA;
-	// 		// float w_b = w_centerB + w_sizeB;
-
-	// 		bool intersects_a = dbg::intersectsFrustum(worldViewProj, {aMin.x, aMin.y, 0.0f}, {aMin.x, aMin.y, 500.0f});
-	// 		bool intersects_b = dbg::intersectsFrustum(worldViewProj, {bMin.x, bMin.y, 0.0f}, {bMin.x, bMin.y, 500.0f});
-	// 		if(!intersects_a) w_a = 0.0f;
-	// 		if(!intersects_b) w_b = 0.0f;
-			
-	// 		if(ndcACenter.w < 0.0f)     w_a = 0.0f;
-	// 		if(ndcBCenter.w < 0.0f)     w_b = 0.0f;
-	// 		if(screenACenter.x < -1.0f) w_a = 0.0f;
-	// 		if(screenACenter.x > 1.0f)  w_a = 0.0f;
-	// 		if(screenBCenter.x < -1.0f) w_b = 0.0f;
-	// 		if(screenBCenter.x > 1.0f)  w_b = 0.0f;
-			
-	// 		return w_a > w_b;
-	// 		//return aMin.x < bMin.x;
-	// 	});
 }
 
 void initCuda() {
@@ -1119,38 +962,6 @@ void renderCUDA(shared_ptr<GLRenderer>& renderer) {
 
 			boxes.push_back(box);
 			colors.push_back(0xffff00ff);
-		}
-
-		if(settings.showPatchBoxes)
-		{
-			lock_guard<mutex> heightmapsLock(mtx_heightmaps);
-
-			float minWeight = Infinity;
-			float maxWeight = -Infinity;
-			for(HeightmapCoords& coord : heightmapsToGenerate){
-				minWeight = min(minWeight, coord.dbg_weight);
-				maxWeight = max(maxWeight, coord.dbg_weight);
-			}
-		
-			for(HeightmapCoords& coord : heightmapsToGenerate){
-				vec2 min = coord.min();
-				vec2 max = coord.max();
-
-				Box3 box;
-				box.min = vec3(min, 0.0f);
-				box.max = vec3(max, 100.0f);
-
-				float w = (coord.dbg_weight - minWeight) / (maxWeight - minWeight);
-
-				int colorIndex = (1.0f - w) * SPECTRAL.size();
-				colorIndex = std::max(colorIndex, 0);
-				colorIndex = std::min(colorIndex, int(SPECTRAL.size() - 1));
-				uint32_t color = SPECTRAL[colorIndex];
-
-				boxes.push_back(box);
-				colors.push_back(color);
-
-			}
 		}
 
 		cuMemcpyHtoD(cptr_boxes, boxes.data(), boxes.size() * sizeof(Box3));
@@ -1483,28 +1294,6 @@ void addChunkPoints(const vector<icp::Point>& points) {
 		patches[heightmaps[coords].patchIndex].numPoints = chunkPoints.size();
 		//heightmaps[coords].chunkPointsBuffer->commit(chunkPoints.size() * sizeof(Point));
 		cuMemcpyHtoD(heightmaps[coords].chunkPointsBuffer, chunkPoints.data(), chunkPoints.size() * sizeof(Point));
-	}
-
-	// if all of a chunk's chunk points are loaded, generate heightmaps
-	for (auto& lasTileId : updatedLasTiles) {
-		lock_guard<mutex> lock(mtx_heightmaps);
-
-		if (lasTileChunkPointData[lasTileId]->numExpectedChunkPoints >= 0 &&
-				lasTileChunkPointData[lasTileId]->numExpectedChunkPoints <
-						lasTileChunkPointData[lasTileId]->numChunkPointsLoaded) {
-			// check overlapping patches -> if all overlapping las tiles have all points, then generate heightmap
-			for (auto& coords : lasTileChunkPointData[lasTileId]->overlappingPatches) {
-				if (heightmaps[coords].hasAllExpectedChunkPoints()) {
-					// also need to check all surrounding patches...
-					auto neighboringTiles = getNeighboringRegions(coords);
-					if (all_of(neighboringTiles.cbegin(), neighboringTiles.cend(), [&](auto& c) {
-								return heightmaps[c.first].hasAllExpectedChunkPoints();
-							})) {
-						heightmapsToGenerate.push_back(coords);
-					}
-				}
-			}
-		}
 	}
 
 	paatchesNeedUpdate = true;
@@ -1902,123 +1691,6 @@ std::jthread spawnLoader(atomic_bool& isClosing) {
 	});
 }
 
-std::jthread spawnHeightmapGeneratorThread(atomic_bool& isClosing) {
-	return std::jthread([&]() {
-		cuCtxSetCurrent(context);
-		while (!isClosing) {
-			using namespace std::chrono_literals;
-			std::this_thread::sleep_for(1ms);
-
-			if (!boundsAreValid) {
-				std::this_thread::sleep_for(1ms);
-			}
-
-			// only acquire lock if we really have some work to do
-			std::shared_lock<shared_mutex> lock(mtx_loaders);
-
-			if (optional<HeightmapGenerationTask> task = getHeightmapGenerationTask(); task.has_value()) {
-				
-				double sampleMeanZ = 0.0f;
-				for (double z : task->samples.z) {
-					sampleMeanZ += z;
-				}
-				sampleMeanZ = sampleMeanZ / double(task->samples.z.size());
-
-				vec2 patchCenterModelSpace = task->coords.center();
-				dvec3 patchCenter = {
-					double(patchCenterModelSpace.x) + boxMinD.x,
-					double(patchCenterModelSpace.y) + boxMinD.y,
-					//.z = double(patchCenterModelSpace.z) + boxMinD.z,
-					//.z = 0.0,
-					sampleMeanZ,
-				};
-
-				Patch& patch = patches[heightmaps[task->coords].patchIndex];
-
-				uint32_t numChunkPoints = task->samples.z.size();
-				vector<Point> chunkPoints(numChunkPoints);
-				for (int i = 0; i < numChunkPoints; i++) {
-					Point point;
-					point.x = task->samples.xy[2 * i + 0] - boxMin.x;
-					point.y = task->samples.xy[2 * i + 1] - boxMin.y;
-					point.z = task->samples.z[i] - boxMin.z;
-
-					chunkPoints[i] = point;
-				}
-				// cuMemsetD32(task->dbgHeightmapChunkPoints, numChunkPoints, 1);
-				// cuMemcpyHtoD(task->dbgHeightmapChunkPoints + 16, chunkPoints.data(), chunkPoints.size() * sizeof(Point));
-
-				// DEBUG OUTPUT
-				if(patch.gridCoords.x == settings.debugPatchX && patch.gridCoords.y == settings.debugPatchY){
-					float min = Infinity;
-					float max = -Infinity;
-					for(int i = 0; i < task->samples.z.size(); i++){
-						min = std::min(min, task->samples.z[i]);
-						max = std::max(max, task->samples.z[i]);
-					}
-
-					println("=======================================================================");
-					println("=======================================================================");
-					println("PATCH {} / {}", patch.gridCoords.x, patch.gridCoords.y);
-					println("min: {}", min);
-					println("max: {}", max);
-				}
-
-				heightmapGenerator->prog_utilities = prog_utilities;
-
-				double t_start = now();
-
-				glm::ivec2 heightmapCoords = {task->coords.x, task->coords.y};
-				if (heightmapGenerator->generateHeightmapRgb(task->heightmapBuffer, task->heightmapTextureBuffer, patchCenter, task->samples, heightmapCoords)) {
-					lock_guard<mutex> heightmapsLock(mtx_heightmaps);
-					heightmaps[task->coords].hasHeightmap = true;
-					patches[heightmaps[task->coords].patchIndex].hasHeightmap = true;
-					paatchesNeedUpdate = true;
-
-					double duration = now() - t_start;
-					double millies = duration * 1000.0;
-
-					Runtime::numGeneratedHeightmaps++;
-
-					// println("generated heightmap for patch {:3} / {:3}. Center: {:12.3f}, {:12.3f}, {:12.3f}, min: {:12L}, {:12L}, max: {:12L}, {:12L}. Duration: {:.1f} ms", 
-					// 	task->coords.x, task->coords.y,
-					// 	patchCenter.x, patchCenter.y, patchCenter.z,
-					// 	patch.min.x, patch.min.y, patch.max.x, patch.max.y, 
-					// 	millies
-					// );
-				}else{
-					lock_guard<mutex> heightmapsLock(mtx_heightmaps);
-					heightmaps[task->coords].hasHeightmap = true;
-					Patch& patch = patches[heightmaps[task->coords].patchIndex];
-					patch.hasHeightmap = true;
-					
-
-					cuMemsetD8((CUdeviceptr)patch.texture, 0, 64 * 64 * 4);
-
-					paatchesNeedUpdate = true;
-					Runtime::numGeneratedHeightmaps++;
-				}
-				// if (heightmapGenerator->generateHeightmap(task->heightmapBuffer, patchCenter, task->samples)) {
-				// 	lock_guard<mutex> heightmapsLock(mtx_heightmaps);
-				// 	heightmaps[task->coords].hasHeightmap = true;
-				// 	patches[heightmaps[task->coords].patchIndex].hasHeightmap = true;
-				// 	paatchesNeedUpdate = true;
-
-				// 	// double duration = now() - t_start;
-				// 	// double millies = duration * 1000.0;
-
-				// 	// println("generated heightmap for patch {:3} / {:3}. Center: {:12.3f}, {:12.3f}, {:12.3f}, min: {:12L}, {:12L}, max: {:12L}, {:12L}. Duration: {:.1f} ms", 
-				// 	// 	task->coords.x, task->coords.y,
-				// 	// 	patchCenter.x, patchCenter.y, patchCenter.z,
-				// 	// 	patch.min.x, patch.min.y, patch.max.x, patch.max.y, 
-				// 	// 	millies
-				// 	// );
-				// }
-			}
-		}
-	});
-}
-
 #include "./gui/gui.h"
 
 // fill dict like in cli.py:
@@ -2114,10 +1786,6 @@ int main(int argc, char* argv[]) {
 	for (int i = 0; i < numThreads; ++i) {
 		loaderThreads.push_back(std::move(spawnLoader(isClosing)));
 	}
-	vector<std::jthread> heightmapGeneratorThreads{};
-	for (int i = 0; i < numHeightmapGeneratorThreads; ++i) {
-		heightmapGeneratorThreads.push_back(std::move(spawnHeightmapGeneratorThread(isClosing)));
-	}
 
 	renderer->onFileDrop([&](vector<string> files) {
 		vector<string> pointCloudFiles;
@@ -2161,12 +1829,6 @@ int main(int argc, char* argv[]) {
 			println("### ALL CHUNKPOINTS LOADED!!!!");
 			println("### ALL CHUNKPOINTS LOADED!!!!");
 			println("====================================================================");
-			lock_guard<mutex> heightmapsLock(mtx_heightmaps);
-			for (const auto& [c, t] : heightmaps) {
-				if (!t.hasHeightmap) {
-					heightmapsToGenerate.push_back(c);
-				}
-			}
 		}
 
 		if (chunkPointLoader && !allChunkPointsLoaded) {
@@ -2225,12 +1887,6 @@ int main(int argc, char* argv[]) {
 		}
 
 		
-		sortHeightmapGenerationTasks(
-			float(renderer->width), 
-			float(renderer->height), 
-			renderer->camera->position);
-		
-
 		if (paatchesNeedUpdate) {
 			lock_guard<mutex> heightmapsLock(mtx_heightmaps);
 			paatchesNeedUpdate = false;
@@ -2482,12 +2138,6 @@ int main(int argc, char* argv[]) {
 		}
 	}
 	loaderThreads.clear();
-	for (auto& t : heightmapGeneratorThreads) {
-		if (t.joinable()) {
-			t.join();
-		}
-	}
-	heightmapGeneratorThreads.clear();
 
 	if (chunkPointLoader) {
 		while (!chunkPointLoader->terminate()) {}
