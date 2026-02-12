@@ -1,3 +1,0 @@
-[submodule "deps/tpp"]
-	path = deps/tpp
-	url = https://github.com/mrkkrj/TrianglePP.git
