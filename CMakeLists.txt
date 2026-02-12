@@ -4,7 +4,6 @@ set(CMAKE_CXX_STANDARD 23)
 project(IPES)
 
 include(FetchContent)
-add_subdirectory(heightmap_interp)
 add_subdirectory(ICP)
 
 option(IPES_CreateCUDASymlinks "Create symbolic links instead of copying CUDA files." ON)
@@ -69,7 +68,6 @@ target_link_libraries(${PROJECT_NAME}
 		CUDA::nvJitLink
 		${OPENGL_LIBRARY}
 		ICP
-		hm_interp
 )
 target_include_directories(${PROJECT_NAME} PRIVATE ${stb_SOURCE_DIR})
 

@@ -13,6 +13,7 @@
 #include <vector>
 #include <execution>
 #include <algorithm>
+#include <unordered_set>
 
 #include "CudaModularProgram.h"
 #include "GLRenderer.h"
@@ -41,8 +42,6 @@
 #include "LasLoader.h"
 #include "laszip/laszip_api.h"
 
-#include "HeightmapGenerator.h"
-
 namespace dbg{
 	#include "math.cuh"
 };
@@ -65,8 +64,6 @@ using glm::mat4;
 using std::snprintf;
 
 namespace fs = fs;
-
-shared_ptr<HeightmapGenerator> heightmapGenerator = nullptr;
 
 atomic_bool allChunkPointsLoaded = false;
 
@@ -182,7 +179,6 @@ CUdeviceptr cptr_chunkPointsBuffer; // pointer from patchID to heightmap data
 
 vector<SparseHeightmapPointer> sparseHeightmapPointers;
 
-CUdeviceptr cptr_heightmaps;
 CUdeviceptr cptr_textures;
 std::atomic_uint32_t numActivePatches = 0;
 
@@ -452,92 +448,6 @@ vector<std::pair<HeightmapCoords, vector<uint2>>> getNeighboringRegions(
 	return std::move(neighboringRegions);
 }
 
-HeightmapGenerator::PatchSamples getPatchPoints(HeightmapCoords& patchCoords) {
-	HeightmapGenerator::PatchSamples samples{};
-
-	// TODO: remove the concept of tile sectors. 
-	// We are now iterating through all points in all adjacent patches anyway.
-	vector<pair<HeightmapCoords, vector<uint2>>> tileSectors{};
-	for(int x : {-1, 0, 1})
-	for(int y : {-1, 0, 1})
-	{
-        HeightmapCoords neighborTile{.x = patchCoords.x + x, .y = patchCoords.y + y};
-
-		if (!heightmaps.contains(neighborTile)) continue;
-
-		tileSectors.push_back({neighborTile, {{0, 0}, {0, 1}, {0, 2}, {1, 0}, {1, 1}, {1, 2}, {2, 0}, {2, 1}, {2, 2}}});
-	}
-
-	vec2 patchMin = patchCoords.min();
-	vec2 patchMax = patchCoords.max();
-	double2 sampleMin = double2{
-		double(patchMin.x - 161.0f) + boxMinD.x,	// 161 instead of 160 for padding because of float vs double
-		double(patchMin.y - 161.0f) + boxMinD.y,
-	};
-	double2 sampleMax = double2{
-		double(patchMax.x + 161.0f) + boxMinD.x,
-		double(patchMax.y + 161.0f) + boxMinD.y,
-	};
-
-	bool isDebugPatch = patchCoords.x == settings.debugPatchX && patchCoords.y == settings.debugPatchY;
-	if (isDebugPatch) {
-		println("========================================================");
-		println("========================================================");
-		println("========================================================");
-		println("getPatchPoints({} / {})", patchCoords.x, patchCoords.y);
-		println("patchMin:	 {:12.3f}, {:12.3f}", patchMin.x, patchMin.y);
-		println("patchMax:	 {:12.3f}, {:12.3f}", patchMax.x, patchMax.y);
-		println("sampleMin: {:12.3f}, {:12.3f}", sampleMin.x, sampleMin.y);
-		println("sampleMax: {:12.3f}, {:12.3f}", sampleMax.x, sampleMax.y);
-	}
-
-	for (auto& sectors : tileSectors) {
-		auto& heightmapTile = heightmaps[sectors.first];
-		for (auto& s : sectors.second) {
-
-			if (isDebugPatch) {
-				auto& points = heightmapTile.chunkPointSectors[s.y][s.x];
-
-				println("sector {:3} / {:3}, points: {:5}", s.x, s.y, points.size());
-			}
-
-			for (auto& p : heightmapTile.chunkPointSectors[s.y][s.x]) {
-
-				if (p.x < sampleMin.x || p.x > sampleMax.x || p.y < sampleMin.y || p.y > sampleMax.y) {
-					// spdlog::error(
-					// 		"point outside query region. p=({},{}) min=({},{}) max=({},{})",
-					// 		p.x,
-					// 		p.y,
-					// 		sampleMin.x,
-					// 		sampleMin.y,
-					// 		sampleMax.x,
-					// 		sampleMax.y);
-				} else {
-					pc2hm::RGB rgb;
-					rgb.r = float(p.rgba[0]) / 256.0f;
-					rgb.g = float(p.rgba[1]) / 256.0f;
-					rgb.b = float(p.rgba[2]) / 256.0f;
-
-					samples.xy.push_back(p.x);
-					samples.xy.push_back(p.y);
-					samples.z.push_back(float(p.z));
-					samples.rgb.push_back(rgb);
-				}
-			}
-		}
-	}
-
-	if (isDebugPatch) {
-		println("#samples: {}", samples.z.size());
-
-		println("========================================================");
-		println("========================================================");
-		println("========================================================");
-	}
-
-	return std::move(samples);
-}
-
 struct Plane {
 	glm::vec3 normal;
 	float constant;
@@ -767,10 +677,10 @@ Uniforms getUniforms(shared_ptr<GLRenderer>& renderer) {
 	uniforms.patches_y = hostStats.numPatchesY;
 	uniforms.numChunks = chunks.size();
 
-	uniforms.heightmapSize = heightmapGenerator->heightmapSize();
+	uniforms.heightmapSize = 0; // TODO: remove
 	uniforms.textureSize = textureSize;
-	uniforms.heightmapPatchRadius = heightmapGenerator->heightmapPatchRadius();
-	uniforms.heightmapNumericalStabilityFactor = heightmapGenerator->heightmapNumericalStabilityFactor();
+	uniforms.heightmapPatchRadius = 0; // TODO: remove
+	uniforms.heightmapNumericalStabilityFactor = 0; // TODO remove
 	uniforms.disableHighResTiles = settings.disableHighResTiles;
 	uniforms.disableChunkPoints = settings.disableChunkPoints;
 	uniforms.disableHeightmaps = settings.disableHeightmaps;
@@ -1207,16 +1117,14 @@ bool addNewPatch(HeightmapCoords& coords) {
 			.patchIndex = heightmaps[coords].patchIndex,
 			.numPoints = 0,
 			.hasHeightmap = false,
-            .heightmap = (float*)(cptr_heightmaps + (heightmapGenerator->heightmapBufferSize() * heightmaps[coords].patchIndex)),
-			.texture = (uint32_t*)(cptr_textures + (textureByteSize * heightmaps[coords].patchIndex)),
+			.heightmap = nullptr, // TODO remove
+			.texture = nullptr, // TODO remove
 			.points = (Point*)heightmaps[coords].chunkPointsBuffer,
 		});
 
 
 
 		SparseHeightmapPointer ptr;
-		ptr.heightmap  = (void*)(cptr_heightmaps + (heightmapGenerator->heightmapBufferSize() * heightmaps[coords].patchIndex));
-		ptr.texture    = (void*)(cptr_textures + (textureByteSize * heightmaps[coords].patchIndex));
 		ptr.patchIndex = heightmaps[coords].patchIndex;
 
 		sparseHeightmapPointers[patchID] = ptr;
@@ -1451,7 +1359,6 @@ void initializeTiles(GLRenderer& renderer, const vector<icp::LasFileInfo>& tileB
 
 		printElapsedTime("    sorted heightList", t_start);
 		
-		cptr_heightmaps        = CURuntime::alloc("cptr_heightmaps", numHeightmaps * heightmapGenerator->heightmapBufferSize());
 		cptr_patches           = CURuntime::alloc("cptr_patches", numHeightmaps * sizeof(Patch));
 		cptr_textures          = CURuntime::alloc("cptr_textures", numHeightmaps * textureByteSize);
 
@@ -1718,11 +1625,6 @@ int main(int argc, char* argv[]) {
 
 	int heightmapResolution = int(program.get<uint32_t>("--hmsize"));
 	int interpolationResolution = heightmapResolution + (heightmapResolution / 2);
-	heightmapGenerator = make_shared<HeightmapGenerator>(
-		program.get<string>("--model"), 
-		program.get<string>("--model_rgb")
-	);
-	heightmapGenerator->prog_utilities = prog_utilities;
 
 	heightmapSizeF = double(heightmapResolution);
 
