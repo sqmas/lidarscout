@@ -619,7 +619,8 @@ float boundsSizeOnScreen(
 void initCuda() {
 	cuInit(0);
 	cuDeviceGet(&device, 0);
-	cuCtxCreate(&context, 0, device);
+	CUctxCreateParams create_params = {};
+	cuCtxCreate(&context, &create_params, 0, device);
 	cuStreamCreate(&stream_upload, CU_STREAM_NON_BLOCKING);
 	cuStreamCreate(&stream_download, CU_STREAM_NON_BLOCKING);
 

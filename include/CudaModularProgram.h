@@ -114,7 +114,8 @@ struct CudaModule{
 		string cuda_path = std::getenv("CUDA_PATH");
 		string optInclude = std::format("-I {}", dir).c_str();
 		string cuda_include = std::format("-I {}/include", cuda_path);
-		string cudastd_include = std::format("-I {}/include/cuda/std", cuda_path);
+		string cudastd_include = std::format("-I {}/include/cccl/cuda/std", cuda_path);
+		string cudastd_include_parent = std::format("-I {}/include/cccl", cuda_path);
 		//string cudastd_detail_include = std::format("-I {}/include/cuda/std/detail/libcxx/include", cuda_path);
 
 		CUdevice device;
@@ -140,6 +141,7 @@ struct CudaModule{
 			"-lineinfo",
 			cudastd_include.c_str(),
 			cuda_include.c_str(),
+			cudastd_include_parent.c_str(),
 			optInclude.c_str(),
 			"-I ./",
 			"-I ./include",

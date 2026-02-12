@@ -42,21 +42,23 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 # Dependencies
 # add CPM
-include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM_0.40.2.cmake)
+include(cmake/CPM.cmake)
 
-find_package(CUDAToolkit 12.4 REQUIRED)
+find_package(CUDAToolkit 13.0 REQUIRED)
 find_package(OpenGL REQUIRED)
 
-CPMAddPackage("gh:p-ranav/argparse#v3.0")
-CPMAddPackage("gh:gabime/spdlog#v1.13.0")
+CPMAddPackage("gh:p-ranav/argparse#v3.2")
+CPMAddPackage("gh:gabime/spdlog#v1.17.0")
 set(GLFW_INSTALL OFF CACHE BOOL "")
-CPMAddPackage("gh:glfw/glfw#3.3.9")
-CPMAddPackage("gh:g-truc/glm#1.0.1")
+CPMAddPackage("gh:glfw/glfw#3.4")
+CPMAddPackage("gh:g-truc/glm#1.0.3")
 set(LASZIP_BUILD_STATIC ON)
 CPMAddPackage("gh:LASzip/LASzip#3.4.3")
 CPMAddPackage("gh:nothings/stb#31707d1")
 #CPMAddPackage("gh:ocornut/imgui#v1.90.2")
 #CPMAddPackage("gh:epezent/implot#v0.16")
+
+find_package(TBB REQUIRED)
 
 target_link_libraries(${PROJECT_NAME}
 		argparse::argparse
@@ -68,6 +70,7 @@ target_link_libraries(${PROJECT_NAME}
 		CUDA::nvJitLink
 		${OPENGL_LIBRARY}
 		ICP
+		TBB::tbb
 )
 target_include_directories(${PROJECT_NAME} PRIVATE ${stb_SOURCE_DIR})
 
@@ -145,17 +148,6 @@ if (symlinksSupported OR NOT IPES_CreateCUDASymlinks)
 			"$<TARGET_FILE_DIR:${PROJECT_NAME}>/modules"
 		COMMENT "POST BUILD: copying modules folder")
 
-	# copy models to build dir for deployment
-	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-			COMMAND ${CMAKE_COMMAND} -E copy
-			../ipes_cnn.pt
-			"$<TARGET_FILE_DIR:${PROJECT_NAME}>/ipes_cnn.pt"
-			COMMENT "POST BUILD: copying model for deployment")
-	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-			COMMAND ${CMAKE_COMMAND} -E copy
-			../ipes_cnn_rgb.pt
-			"$<TARGET_FILE_DIR:${PROJECT_NAME}>/ipes_cnn_rgb.pt"
-			COMMENT "POST BUILD: copying rgb model for deployment")
 else ()
 	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E create_symlink
@@ -163,18 +155,7 @@ else ()
 			"$<TARGET_FILE_DIR:${PROJECT_NAME}>/modules"
 		COMMENT "POST BUILD: creating symlink for modules folder")
 	message(STATUS "path is ${HEIGHTMAP_INTERP_MODEL_PATH}")
-	
-	# copy models to build dir for deploying
-	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-			COMMAND ${CMAKE_COMMAND} -E create_symlink
-			../ipes_cnn.pt
-			"$<TARGET_FILE_DIR:${PROJECT_NAME}>/ipes_cnn.pt"
-			COMMENT "POST BUILD: creating symlink model for deployment")
-	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-			COMMAND ${CMAKE_COMMAND} -E create_symlink
-			../ipes_cnn_rgb.pt
-			"$<TARGET_FILE_DIR:${PROJECT_NAME}>/ipes_cnn_rgb.pt"
-			COMMENT "POST BUILD: creating symlink rgb model for deployment")
+
 endif (symlinksSupported OR NOT IPES_CreateCUDASymlinks)
 
 # set workdir to ../$(SolutionDir), so that .cu files can be monitored/reloaded/compiled

@@ -75,10 +75,10 @@ if (ICP_POINTS_AS_FLOATS)
 endif (ICP_POINTS_AS_FLOATS)
 
 ## ARGPARSE
-CPMAddPackage("gh:p-ranav/argparse#v3.0")
+CPMAddPackage("gh:p-ranav/argparse#v3.2")
 
 ## SPDLOG
-CPMAddPackage("gh:gabime/spdlog#v1.13.0")
+CPMAddPackage("gh:gabime/spdlog#v1.17.0")
 target_link_libraries(${PROJECT_NAME} spdlog::spdlog)
 target_include_directories(${PROJECT_NAME} PRIVATE ${spdlog_SOURCE_DIR}/include)
 
